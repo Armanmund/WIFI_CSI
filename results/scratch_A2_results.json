@@ -1,0 +1,22 @@
+{
+    "5": {
+        "mean_acc": 0.5,
+        "std_acc": 0.0,
+        "ci_lower": 0.5,
+        "ci_upper": 0.5,
+        "all_runs": [
+            0.5
+        ],
+        "n_runs": 1
+    },
+    "10": {
+        "mean_acc": 0.75,
+        "std_acc": 0.0,
+        "ci_lower": 0.75,
+        "ci_upper": 0.75,
+        "all_runs": [
+            0.75
+        ],
+        "n_runs": 1
+    }
+}

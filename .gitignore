@@ -1,0 +1,23 @@
+# Python virtual environment
+.venv/
+venv/
+ENV/
+
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Matplotlib cache
+.matplotlib/
+
+# macOS metadata
+.DS_Store
+
+# Temporary outputs
+*.png
+
+# Datasets (synthetic / large raw data)
+few_shot_datasets/
+data/
+raw_data/

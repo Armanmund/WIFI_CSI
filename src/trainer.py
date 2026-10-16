@@ -203,6 +203,9 @@ class Trainer:
         trainable_params = filter(lambda p: p.requires_grad, self.model.parameters())
         weight_decay = self.config.get('weight_decay', 1e-4)
         self.optimizer = optim.Adam(trainable_params, lr=lr, weight_decay=weight_decay)
+        step_size = self.config.get('step_size', 30)
+        gamma = self.config.get('gamma', 0.5)
+        self.scheduler = optim.lr_scheduler.StepLR(self.optimizer, step_size=step_size, gamma=gamma)
         
         self.best_val_loss = float('inf')
         self.epochs_no_improve = 0
