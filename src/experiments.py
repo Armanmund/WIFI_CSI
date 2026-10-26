@@ -1,4 +1,4 @@
-﻿"""
+"""
 Experiment orchestrator for Wi-Fi CSI Activity Recognition.
 
 This module runs all four experiments:
@@ -14,8 +14,8 @@ import os
 import sys
 import time
 import copy
+import csv
 import numpy as np
-import pandas as pd
 import torch
 from torch.utils.data import DataLoader
 from pathlib import Path
@@ -36,7 +36,7 @@ from src.visualisation import (
     plot_cross_environment_comparison, plot_finetuning_curve,
     plot_per_class_accuracy, plot_accuracy_recovery_curve
 )
-from src.utils import ResultsAggregator, save_results, ensure_dir, NumpyEncoder
+from src.utils import save_results, ensure_dir, NumpyEncoder
 import matplotlib
 matplotlib.use('Agg')  # Non-interactive backend for saving plots
 import matplotlib.pyplot as plt
@@ -231,29 +231,18 @@ def run_cross_environment_experiment(config, model_path):
 
 
 # ═══════════════════════════════════════════════════════════════════
-# EXPERIMENT 3: Fine-tuning with limited target data
+# EXPERIMENTS 3 & 4: Few-shot adaptation (Fine-tuning & Scratch Control)
 # ═══════════════════════════════════════════════════════════════════
 
-def run_finetuning_experiment(config, model_path, target_env):
+def _run_few_shot_pipeline(config, target_env, is_finetune=True, model_path=None):
     """
-    Fine-tune the pre-trained model using k shots per class from the target
-    environment.
-
-    For each k in shots_per_class:
-        For each seed in range(num_seeds):
-            For each draw in range(num_sample_draws):
-                - Sample k examples per class
-                - Split into mini-train (80%) / mini-val (20%)
-                - Load pre-trained model
-                - Fine-tune with small lr
-                - Evaluate on REMAINING target data
-                - Record accuracy
-
-    Returns:
-        dict mapping k -> {mean_acc, std_acc, ci_lower, ci_upper, all_runs}
+    Unified few-shot evaluation pipeline. Runs either Experiment 3 (fine-tuning
+    from pre-trained source model) or Experiment 4 (from-scratch control).
+    Guarantees strict train/test data separation with zero sample leakage.
     """
+    title = f"EXPERIMENT {'3: Fine-Tuning' if is_finetune else '4: Train from Scratch (Control)'} on {target_env}"
     print(f"\n" + "=" * 70)
-    print(f"  EXPERIMENT 3: Fine-Tuning on {target_env}")
+    print(f"  {title}")
     print("=" * 70)
 
     device = config.device
@@ -281,65 +270,64 @@ def run_finetuning_experiment(config, model_path, target_env):
                 try:
                     set_seed(run_seed)
 
-                    # Sample k per class
-                    X_sampled, y_sampled = sample_k_shot(
-                        X_full, y_full, k, config.data.num_classes, seed=run_seed
+                    # Sample k per class and obtain strictly non-overlapping test set
+                    X_sampled, y_sampled, X_remaining, y_remaining = sample_k_shot(
+                        X_full, y_full, k, config.data.num_classes, seed=run_seed, return_remaining=True
                     )
-
-                    # Identify remaining samples for testing
-                    sampled_indices = set()
-                    for c in range(config.data.num_classes):
-                        c_indices = np.where(y_full == c)[0]
-                        np.random.seed(run_seed)
-                        selected = np.random.choice(c_indices, min(k, len(c_indices)), replace=False)
-                        sampled_indices.update(selected.tolist())
-
-                    remaining_mask = np.ones(len(y_full), dtype=bool)
-                    remaining_mask[list(sampled_indices)] = False
-                    X_remaining = X_full[remaining_mask]
-                    y_remaining = y_full[remaining_mask]
 
                     # If too few samples for train/val split, use all for training
                     n_sampled = len(y_sampled)
-                    if n_sampled < 8:  # Too few for meaningful split
+                    if n_sampled < 8:
                         train_dataset = CSIDataset(X_sampled, y_sampled)
                         train_loader = DataLoader(train_dataset, batch_size=max(1, n_sampled), shuffle=True)
-                        val_loader = train_loader  # Use same for validation in very low data
+                        val_loader = train_loader
                     else:
-                        val_frac = 0.2
                         train_loader, val_loader, _, _ = create_dataloaders(
                             X_sampled, y_sampled,
                             batch_size=min(config.train.batch_size, n_sampled),
-                            val_split=val_frac,
+                            val_split=0.2,
                             seed=run_seed
                         )
 
-                    # Test loader from remaining data
+                    # Test loader from remaining target data (strictly zero leakage)
                     test_dataset = CSIDataset(X_remaining, y_remaining)
                     test_loader = DataLoader(
                         test_dataset, batch_size=config.train.batch_size, shuffle=False
                     )
 
-                    # Load pre-trained model
-                    model = load_model(
-                        model_path, num_classes=config.data.num_classes, device=device
-                    )
-
-                    # Fine-tune
-                    ft_config = {
-                        'lr': config.finetune.ft_lr,
-                        'weight_decay': config.finetune.ft_weight_decay,
-                        'step_size': 30,
-                        'gamma': 0.5,
-                    }
-                    trainer = Trainer(model, device, ft_config)
-                    trainer.fine_tune(
-                        train_loader, val_loader,
-                        num_epochs=config.finetune.ft_epochs,
-                        lr=config.finetune.ft_lr,
-                        patience=config.finetune.ft_patience,
-                        freeze_features=config.finetune.freeze_features
-                    )
+                    # Model setup & training
+                    if is_finetune:
+                        model = load_model(
+                            model_path, num_classes=config.data.num_classes, device=device
+                        )
+                        trainer_cfg = {
+                            'lr': config.finetune.ft_lr,
+                            'weight_decay': config.finetune.ft_weight_decay,
+                            'step_size': 30,
+                            'gamma': 0.5,
+                        }
+                        trainer = Trainer(model, device, trainer_cfg)
+                        trainer.fine_tune(
+                            train_loader, val_loader,
+                            num_epochs=config.finetune.ft_epochs,
+                            lr=config.finetune.ft_lr,
+                            patience=config.finetune.ft_patience,
+                            freeze_features=config.finetune.freeze_features
+                        )
+                    else:
+                        model = build_model(num_classes=config.data.num_classes, device=device)
+                        trainer_cfg = {
+                            'lr': config.finetune.ft_lr,
+                            'weight_decay': config.finetune.ft_weight_decay,
+                            'step_size': 30,
+                            'gamma': 0.5,
+                        }
+                        trainer = Trainer(model, device, trainer_cfg)
+                        trainer.fit(
+                            train_loader, val_loader,
+                            num_epochs=config.finetune.ft_epochs,
+                            patience=config.finetune.ft_patience
+                        )
 
                     # Evaluate on remaining data
                     metrics = trainer.evaluate(test_loader, class_names=class_names)
@@ -364,143 +352,30 @@ def run_finetuning_experiment(config, model_path, target_env):
                 'all_runs': [float(a) for a in k_accuracies],
                 'n_runs': n,
             }
-            print(f"  k={k}: acc = {mean_acc:.4f} ± {std_acc:.4f} (95% CI: [{mean_acc-ci:.4f}, {mean_acc+ci:.4f}])")
+            ci_str = f" (95% CI: [{mean_acc-ci:.4f}, {mean_acc+ci:.4f}])" if is_finetune else ""
+            print(f"  k={k}: acc = {mean_acc:.4f} ± {std_acc:.4f}{ci_str}")
 
+    prefix = "finetuning" if is_finetune else "scratch"
     save_results(
         {str(k): v for k, v in results.items()},
-        str(config.results_dir / f'finetuning_{target_env}_results.json')
+        str(config.results_dir / f'{prefix}_{target_env}_results.json')
     )
-    print(f"\n[OK] Fine-tuning experiment on {target_env} complete.")
+    print(f"\n[OK] {prefix.capitalize()} experiment on {target_env} complete.")
     return results
 
 
-# ═══════════════════════════════════════════════════════════════════
-# EXPERIMENT 4: Train from scratch (control)
-# ═══════════════════════════════════════════════════════════════════
+def run_finetuning_experiment(config, model_path, target_env):
+    """
+    Fine-tune the pre-trained model using k shots per class from the target environment.
+    """
+    return _run_few_shot_pipeline(config, target_env, is_finetune=True, model_path=model_path)
+
 
 def run_scratch_experiment(config, target_env):
     """
-    Train a randomly-initialized model with the same limited target data.
-    This is the control experiment that isolates the benefit of pre-training.
-
-    Same loop structure as fine-tuning but model starts from random weights.
-
-    Returns:
-        dict mapping k -> {mean_acc, std_acc, ci_lower, ci_upper, all_runs}
+    Train a randomly-initialized model with limited target data (control experiment).
     """
-    print(f"\n" + "=" * 70)
-    print(f"  EXPERIMENT 4: Train from Scratch on {target_env} (Control)")
-    print("=" * 70)
-
-    device = config.device
-    class_names = list(config.data.label_map.keys())
-
-    # Load full target data
-    print(f"\nLoading full {target_env} data...")
-    X_full, y_full = load_environment_data(
-        BASE_DIR, target_env, config.data.data_folder, config.data.label_map
-    )
-    if len(X_full) == 0:
-        raise RuntimeError(f"No data for {target_env}")
-
-    results = {}
-    total_configs = len(config.finetune.shots_per_class)
-
-    for idx, k in enumerate(config.finetune.shots_per_class):
-        print(f"\n--- k={k} shots/class ({idx+1}/{total_configs}) ---")
-        k_accuracies = []
-
-        for seed_idx in range(config.finetune.num_seeds):
-            for draw_idx in range(config.finetune.num_sample_draws):
-                run_seed = config.seed + seed_idx * 1000 + draw_idx
-
-                try:
-                    set_seed(run_seed)
-
-                    # Sample k per class (same sampling as fine-tuning)
-                    X_sampled, y_sampled = sample_k_shot(
-                        X_full, y_full, k, config.data.num_classes, seed=run_seed
-                    )
-
-                    # Identify remaining for testing
-                    sampled_indices = set()
-                    for c in range(config.data.num_classes):
-                        c_indices = np.where(y_full == c)[0]
-                        np.random.seed(run_seed)
-                        selected = np.random.choice(c_indices, min(k, len(c_indices)), replace=False)
-                        sampled_indices.update(selected.tolist())
-
-                    remaining_mask = np.ones(len(y_full), dtype=bool)
-                    remaining_mask[list(sampled_indices)] = False
-                    X_remaining = X_full[remaining_mask]
-                    y_remaining = y_full[remaining_mask]
-
-                    n_sampled = len(y_sampled)
-                    if n_sampled < 8:
-                        train_dataset = CSIDataset(X_sampled, y_sampled)
-                        train_loader = DataLoader(train_dataset, batch_size=max(1, n_sampled), shuffle=True)
-                        val_loader = train_loader
-                    else:
-                        val_frac = 0.2
-                        train_loader, val_loader, _, _ = create_dataloaders(
-                            X_sampled, y_sampled,
-                            batch_size=min(config.train.batch_size, n_sampled),
-                            val_split=val_frac,
-                            seed=run_seed
-                        )
-
-                    test_dataset = CSIDataset(X_remaining, y_remaining)
-                    test_loader = DataLoader(
-                        test_dataset, batch_size=config.train.batch_size, shuffle=False
-                    )
-
-                    # Build NEW random model (no pre-training)
-                    model = build_model(num_classes=config.data.num_classes, device=device)
-
-                    scratch_config = {
-                        'lr': config.finetune.ft_lr,
-                        'weight_decay': config.finetune.ft_weight_decay,
-                        'step_size': 30,
-                        'gamma': 0.5,
-                    }
-                    trainer = Trainer(model, device, scratch_config)
-                    trainer.fit(
-                        train_loader, val_loader,
-                        num_epochs=config.finetune.ft_epochs,
-                        patience=config.finetune.ft_patience
-                    )
-
-                    # Evaluate
-                    metrics = trainer.evaluate(test_loader, class_names=class_names)
-                    k_accuracies.append(metrics['accuracy'])
-
-                except Exception as e:
-                    print(f"    Error (seed={seed_idx}, draw={draw_idx}): {e}")
-                    import traceback
-                    traceback.print_exc()
-
-        if k_accuracies:
-            mean_acc = float(np.mean(k_accuracies))
-            std_acc = float(np.std(k_accuracies))
-            n = len(k_accuracies)
-            ci = 1.96 * std_acc / np.sqrt(n) if n > 1 else 0.0
-
-            results[k] = {
-                'mean_acc': mean_acc,
-                'std_acc': std_acc,
-                'ci_lower': mean_acc - ci,
-                'ci_upper': mean_acc + ci,
-                'all_runs': [float(a) for a in k_accuracies],
-                'n_runs': n,
-            }
-            print(f"  k={k}: acc = {mean_acc:.4f} ± {std_acc:.4f}")
-
-    save_results(
-        {str(k): v for k, v in results.items()},
-        str(config.results_dir / f'scratch_{target_env}_results.json')
-    )
-    print(f"\n[OK] From-scratch experiment on {target_env} complete.")
-    return results
+    return _run_few_shot_pipeline(config, target_env, is_finetune=False)
 
 
 # ═══════════════════════════════════════════════════════════════════
@@ -643,17 +518,28 @@ def generate_summary_table(config, all_results):
                 '95% CI': f"[{res['ci_lower']:.4f}, {res['ci_upper']:.4f}]",
             })
 
-    df = pd.DataFrame(rows)
     print("\n" + "=" * 90)
     print("  SUMMARY RESULTS TABLE")
     print("=" * 90)
-    print(df.to_string(index=False))
+    headers = ['Experiment', 'Environment', 'Shots/Class', 'Accuracy (mean)', 'Accuracy (std)', '95% CI']
+    header_fmt = "{:<25} {:<12} {:<12} {:<16} {:<16} {:<20}"
+    print(header_fmt.format(*headers))
+    print("-" * 90)
+    for r in rows:
+        print(header_fmt.format(
+            r['Experiment'], r['Environment'], r['Shots/Class'],
+            r['Accuracy (mean)'], r['Accuracy (std)'], r['95% CI']
+        ))
+    print("=" * 90)
 
     csv_path = os.path.join(table_dir, 'summary_results.csv')
-    df.to_csv(csv_path, index=False)
+    with open(csv_path, 'w', newline='') as f:
+        writer = csv.DictWriter(f, fieldnames=headers)
+        writer.writeheader()
+        writer.writerows(rows)
     print(f"\n  Table saved to {csv_path}")
 
-    return df
+    return rows
 
 
 def run_full_pipeline(config=None):

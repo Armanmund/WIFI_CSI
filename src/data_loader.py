@@ -81,27 +81,42 @@ def create_dataloaders(X, y, batch_size, val_split, seed):
     
     return train_loader, val_loader, idx_train, idx_val
 
-def sample_k_shot(X, y, k, num_classes, seed):
-    np.random.seed(seed)
-    X_sampled = []
-    y_sampled = []
+def sample_k_shot_indices(y, k, num_classes, seed):
+    """
+    Deterministically sample k indices per class and return both sampled and remaining indices.
+    Guarantees strict zero overlap between sampled and remaining sets.
+    """
+    rng = np.random.default_rng(seed)
+    sampled_indices = []
     
     for c in range(num_classes):
         idx = np.where(y == c)[0]
         if len(idx) == 0:
             continue
         n_samples = min(k, len(idx))
-        selected_idx = np.random.choice(idx, n_samples, replace=False)
-        X_sampled.append(X[selected_idx])
-        y_sampled.append(y[selected_idx])
+        chosen = rng.choice(idx, n_samples, replace=False)
+        sampled_indices.extend(chosen.tolist())
         
-    if X_sampled:
-        X_sampled = np.concatenate(X_sampled)
-        y_sampled = np.concatenate(y_sampled)
-    else:
-        X_sampled, y_sampled = np.array([]), np.array([])
+    sampled_set = set(sampled_indices)
+    remaining_indices = [i for i in range(len(y)) if i not in sampled_set]
+    return np.array(sampled_indices), np.array(remaining_indices)
+
+def sample_k_shot(X, y, k, num_classes, seed, return_remaining=False):
+    """
+    Sample k shots per class from dataset.
+    If return_remaining=True, returns (X_sampled, y_sampled, X_remaining, y_remaining).
+    Otherwise returns (X_sampled, y_sampled) for backward compatibility.
+    """
+    sampled_idx, rem_idx = sample_k_shot_indices(y, k, num_classes, seed)
+    if len(sampled_idx) == 0:
+        empty = np.array([])
+        return (empty, empty, empty, empty) if return_remaining else (empty, empty)
         
-    return X_sampled, y_sampled
+    X_s, y_s = X[sampled_idx], y[sampled_idx]
+    if return_remaining:
+        X_r, y_r = X[rem_idx], y[rem_idx]
+        return X_s, y_s, X_r, y_r
+    return X_s, y_s
 
 def get_full_test_data(base_dir, env_name, data_folder, batch_size=16, label_map=None):
     X, y = load_environment_data(base_dir, env_name, data_folder, label_map)
