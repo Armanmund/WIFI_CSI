@@ -24,6 +24,9 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
+# Ensure writable matplotlib cache in sandbox environments
+os.environ.setdefault('MPLCONFIGDIR', '/tmp/matplotlib')
+
 PROJECT_ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
