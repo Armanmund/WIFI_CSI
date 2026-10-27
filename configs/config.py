@@ -8,21 +8,16 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 @dataclass
 class DataConfig:
     data_folder: str = 'm1c4_PCA_80_300_extracted_3x4'
-    environments: List[str] = field(default_factory=lambda: ['A1', 'A2', 'A3'])
     source_env: str = 'A1'
     target_envs: List[str] = field(default_factory=lambda: ['A2', 'A3'])
     activities: List[str] = field(default_factory=lambda: ['walk', 'empty', 'jump', 'stand'])
     label_map: Dict[str, int] = field(default_factory=lambda: {'walk': 0, 'empty': 1, 'jump': 2, 'stand': 3})
-    data_format: str = 'PCA'
     num_classes: int = 4
 
 @dataclass
 class ModelConfig:
-    model_type: str = 'cnn'
-    conv_channels: List[int] = field(default_factory=lambda: [64, 64, 64, 64])
-    fc_dims: List[int] = field(default_factory=lambda: [1000, 80, 40])
+    name: str = 'CSIActivityCNN'
     num_classes: int = 4
-    dropout_rate: float = 0.3
 
 @dataclass
 class TrainConfig:
