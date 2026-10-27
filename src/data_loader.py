@@ -24,15 +24,27 @@ def load_environment_data(base_dir, env_name, data_folder, label_map=None):
         label_map = {'walk': 0, 'empty': 1, 'jump': 2, 'stand': 3}
     
     X, y = [], []
-    env_type = "train_" if "A1" in env_name else "test_"
-    env_dir = Path(base_dir) / "few_shot_datasets" / data_folder / f"{env_type}{env_name}"
+    base_path = Path(base_dir) / "few_shot_datasets" / data_folder
+    
+    # Resolve directory: match direct name or fallback to train_/test_ prefix
+    candidates = [env_name, f"train_{env_name}", f"test_{env_name}"]
+    env_dir = None
+    for cand in candidates:
+        candidate_path = base_path / cand
+        if candidate_path.exists():
+            env_dir = candidate_path
+            break
+            
+    if env_dir is None:
+        print(f"Warning: Environment directory not found for '{env_name}' under {base_path}")
+        return np.array([]), np.array([])
     
     for activity, label in label_map.items():
         activity_dir = env_dir / activity
         if not activity_dir.exists():
             print(f"Warning: Directory not found - {activity_dir}")
             continue
-        for file in os.listdir(activity_dir):
+        for file in sorted(os.listdir(activity_dir)):
             if file.endswith('.mat'):
                 filepath = activity_dir / file
                 data = read_mat(filepath)
@@ -117,9 +129,3 @@ def sample_k_shot(X, y, k, num_classes, seed, return_remaining=False):
         X_r, y_r = X[rem_idx], y[rem_idx]
         return X_s, y_s, X_r, y_r
     return X_s, y_s
-
-def get_full_test_data(base_dir, env_name, data_folder, batch_size=16, label_map=None):
-    X, y = load_environment_data(base_dir, env_name, data_folder, label_map)
-    dataset = CSIDataset(X, y)
-    loader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
-    return loader
