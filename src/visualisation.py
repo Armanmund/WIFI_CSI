@@ -2,7 +2,7 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-from typing import Dict, List, Any, Optional, Tuple
+from typing import Dict, List, Any, Optional
 
 # Set academic style for plots
 try:
@@ -141,32 +141,6 @@ def plot_finetuning_curve(shots_list: List[int], accuracies_dict: Dict[str, np.n
     ax.set_xticklabels([str(s) for s in shots_list])
     ax.legend(loc='best')
     
-    fig.tight_layout()
-    _save_figure(fig, save_path)
-    return fig
-
-def plot_all_confusion_matrices(results: Dict[str, Dict[int, np.ndarray]], class_names: List[str], save_path: str) -> plt.Figure:
-    """Grid of confusion matrices for multiple conditions."""
-    envs = list(results.keys())
-    shots = list(next(iter(results.values())).keys())
-    
-    fig, axes = plt.subplots(len(envs), len(shots), figsize=(5 * len(shots), 5 * len(envs)))
-    if len(envs) == 1: axes = np.expand_dims(axes, 0)
-    if len(shots) == 1: axes = np.expand_dims(axes, 1)
-    
-    for i, env in enumerate(envs):
-        for j, shot in enumerate(shots):
-            cm = results[env][shot]
-            cm_norm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
-            
-            sns.heatmap(cm_norm, annot=False, cmap='Blues', cbar=False, ax=axes[i, j],
-                        xticklabels=class_names, yticklabels=class_names)
-            axes[i, j].set_title(f"{env} - {shot} Shots")
-            if j == 0:
-                axes[i, j].set_ylabel('True Label')
-            if i == len(envs) - 1:
-                axes[i, j].set_xlabel('Predicted Label')
-                
     fig.tight_layout()
     _save_figure(fig, save_path)
     return fig
