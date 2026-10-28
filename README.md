@@ -14,17 +14,17 @@ The key deliverable is a **characteristic curve** relating recognition accuracy 
 ## Project Structure
 
 ```
-Final_year_project/
+WIFI_CSI/
 ├── configs/
 │   ├── __init__.py
-│   └── config.py              # All experiment configurations (dataclasses)
+│   └── config.py              # Experiment configurations (dataclasses)
 ├── src/
 │   ├── __init__.py
 │   ├── data_loader.py         # Data loading, CSIDataset, k-shot sampling
 │   ├── model.py               # CSIActivityCNN architecture
 │   ├── trainer.py             # Training loop, evaluation, metrics
 │   ├── visualisation.py       # All plotting functions
-│   ├── utils.py               # Utilities, ResultsAggregator, JSON encoding
+│   ├── utils.py               # NumpyEncoder, ensure_dir, save_results
 │   └── experiments.py         # Experiment orchestration (all 4 experiments)
 ├── few_shot_datasets/         # Place dataset here (see below)
 │   └── m1c4_PCA_80_300_extracted_3x4/
@@ -34,13 +34,14 @@ Final_year_project/
 │       │   ├── walk/, empty/, jump/, stand/
 │       └── test_A3/
 │           ├── walk/, empty/, jump/, stand/
-├── models/                    # Saved model checkpoints
+├── models/                    # Saved model checkpoints (e.g. baseline_A1.pt)
 ├── results/                   # Experiment results
 │   ├── plots/                 # Generated plots
 │   └── tables/                # Summary CSV tables
-├── ReWiS-main/                # Original ReWiS repository (reference)
-├── run_experiments.py          # Main entry point
-├── download_data.py           # Dataset download helper
+├── predict.py                 # Real-time movement & activity detector demo
+├── run_experiments.py         # Main entry point for experiments
+├── test_pipeline.py           # Isolated end-to-end smoke test
+├── download_data.py           # Dataset download and verification helper
 ├── requirements.txt           # Python dependencies
 └── README.md                  # This file
 ```
@@ -49,23 +50,39 @@ Final_year_project/
 
 ### 1. Install Dependencies
 
-All dependencies should already be installed. If not:
+All dependencies are pinned in `requirements.txt`:
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 2. Download the Dataset
+### 2. Live Demo & Real-Time Inference
 
-The dataset must be downloaded from Google Drive:
+Test the pre-trained CSI movement detector immediately across all activities (walking, empty room, jumping, standing):
 
-**Option A: Automatic download**
 ```bash
-pip install gdown
-python download_data.py
+# Automated live demo across all classes:
+python predict.py --demo
+
+# Predict a single CSI sample and plot its heatmap:
+python predict.py --file few_shot_datasets/m1c4_PCA_80_300_extracted_3x4/train_A1/walk/sample_000.mat --plot
 ```
 
-**Option B: Manual download**
+### 3. Download & Verify Dataset
+
+Verify existing data or download the official ReWiS dataset from Google Drive:
+
+**Verify dataset integrity:**
+```bash
+python download_data.py --verify
+```
+
+**Automatic download (via gdown):**
+```bash
+python download_data.py --download
+```
+
+**Manual download:**
 1. Go to: https://drive.google.com/drive/folders/1H-0GFOIHmHpHfdV-T5qv_diov_dCQxMS
 2. Download the `Formatted_data_frames` folder
 3. Find the folder `m1c4_PCA_80_300_extracted_3x4` inside it
@@ -74,9 +91,12 @@ python download_data.py
    few_shot_datasets/m1c4_PCA_80_300_extracted_3x4/train_A1/walk/*.mat
    ```
 
-### 3. Verify Dataset
+### 4. Smoke Test (Sandboxed)
+
+Verify the complete 4-experiment pipeline in an isolated temporary sandbox with zero risk to production assets:
+
 ```bash
-python download_data.py  # Will verify even if download fails
+python test_pipeline.py
 ```
 
 ## Running Experiments

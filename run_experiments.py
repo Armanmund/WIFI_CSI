@@ -31,7 +31,6 @@ from src.experiments import (
     run_scratch_experiment,
     run_full_pipeline,
 )
-from src.trainer import set_seed
 
 
 def parse_args():
