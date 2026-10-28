@@ -209,5 +209,10 @@ class Trainer:
         
         self.best_val_loss = float('inf')
         self.epochs_no_improve = 0
+        self.best_model_weights = copy.deepcopy(self.model.state_dict())
+        self.history = {
+            'train_loss': [], 'val_loss': [],
+            'train_acc': [], 'val_acc': []
+        }
         
         return self.fit(train_loader, val_loader, num_epochs, patience, model_save_path)
