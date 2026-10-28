@@ -11,10 +11,18 @@ __pycache__/
 # Matplotlib cache
 .matplotlib/
 
-# macOS metadata
+# OS metadata
 .DS_Store
+Thumbs.db
 
-# Temporary outputs
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*~
+
+# Temporary outputs & test sandboxes
+.test_sandbox/
 *.png
 
 # Datasets (synthetic / large raw data)
