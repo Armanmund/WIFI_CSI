@@ -10,7 +10,6 @@ Usage:
 """
 
 import os
-import sys
 import argparse
 from pathlib import Path
 import scipy.io as sio

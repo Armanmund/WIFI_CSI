@@ -2,7 +2,7 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Optional
 
 # Set academic style for plots
 try:
@@ -140,29 +140,6 @@ def plot_finetuning_curve(shots_list: List[int], accuracies_dict: Dict[str, np.n
     ax.set_xticks(shots_list)
     ax.set_xticklabels([str(s) for s in shots_list])
     ax.legend(loc='best')
-    
-    fig.tight_layout()
-    _save_figure(fig, save_path)
-    return fig
-
-def plot_per_class_accuracy(results: Dict[str, List[float]], class_names: List[str], save_path: str) -> plt.Figure:
-    """Grouped bar chart showing per-class accuracy for different conditions."""
-    fig, ax = plt.subplots(figsize=(12, 6))
-    
-    conditions = list(results.keys())
-    x = np.arange(len(class_names))
-    width = 0.8 / len(conditions)
-    
-    for i, condition in enumerate(conditions):
-        accs = results[condition]
-        offset = (i - len(conditions)/2 + 0.5) * width
-        ax.bar(x + offset, accs, width, label=condition)
-        
-    ax.set_ylabel('Accuracy')
-    ax.set_title('Per-Class Accuracy')
-    ax.set_xticks(x)
-    ax.set_xticklabels(class_names, rotation=45, ha='right')
-    ax.legend()
     
     fig.tight_layout()
     _save_figure(fig, save_path)

@@ -13,10 +13,8 @@ It also generates all plots, tables, and saves results.
 import os
 import sys
 import time
-import copy
 import csv
 import numpy as np
-import torch
 from torch.utils.data import DataLoader
 from pathlib import Path
 from datetime import datetime
@@ -29,14 +27,14 @@ from configs.config import ExperimentConfig, BASE_DIR
 from src.data_loader import (
     load_environment_data, create_dataloaders, CSIDataset, sample_k_shot
 )
-from src.model import CSIActivityCNN, build_model, save_model, load_model
-from src.trainer import Trainer, set_seed, compute_metrics
+from src.model import build_model, load_model
+from src.trainer import Trainer, set_seed
 from src.visualisation import (
     plot_training_curves, plot_confusion_matrix,
     plot_cross_environment_comparison, plot_finetuning_curve,
-    plot_per_class_accuracy, plot_accuracy_recovery_curve
+    plot_accuracy_recovery_curve
 )
-from src.utils import save_results, ensure_dir, NumpyEncoder
+from src.utils import save_results, ensure_dir
 import matplotlib
 matplotlib.use('Agg')  # Non-interactive backend for saving plots
 import matplotlib.pyplot as plt
